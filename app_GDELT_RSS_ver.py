@@ -190,7 +190,7 @@ def fetch_google_news_rss(query: str, hl="ko", gl="KR", ceid="KR:ko", limit=80):
 # Normalization / dedup / sentiment (demo rule)
 # -------------------------
 POS_WORDS = ["확대", "성장", "도입", "개선", "성과", "혁신", "지원", "투자", "상용화", "성공", "협력", "발전"]
-NEG_WORDS = ["우려", "논란", "실패", "중단", "규제", "사고", "부족", "지연", "위험", "갈등", "반대", "피해"]
+NEG_WORDS = ["우려", "논란", "실패", "중단", "규제", "사고", "부족", "지연", "위험", "갈등", "반대"]
 
 def rule_sentiment(text: str) -> str:
     t = (text or "").lower()
