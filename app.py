@@ -11,7 +11,7 @@ import feedparser
 import streamlit as st
 from dateutil.relativedelta import relativedelta
 from google import genai
-from duckduckgo_search import DDGS  # [NEW] 라이브러리 추가
+from duckduckgo_search import DDGS
 
 # ============================================================
 # KIHS (한국수자원조사기술원) 온라인 데이터 분석기 (Pro)
@@ -100,12 +100,9 @@ def safe_iso_from_gdelt(seendate: str):
 def fetch_gdelt_doc(query: str, start_dt: datetime, end_dt: datetime, max_records: int = 250):
     base = "https://api.gdeltproject.org/api/v2/doc/doc"
     out = []
-    startrecord = 0  # GDELT API 조정
+    startrecord = 0  
     pagesize = min(250, max_records)
 
-    # 한글 검색 팁: GDELT는 한국어 쿼리가 약하므로 sourcecountry:KS 추가 고려 가능하나
-    # 여기서는 원본 로직 유지하되 에러 처리 강화
-    
     while len(out) < max_records:
         params = {
             "query": query,
@@ -190,10 +187,6 @@ def fetch_google_news_rss(query: str, hl="ko", gl="KR", ceid="KR:ko", limit=80):
 
 @st.cache_data(show_spinner=False, ttl=60 * 30)
 def fetch_duckduckgo_news(query: str, max_results: int = 50):
-    """
-    [NEW] DuckDuckGo 수집기 추가
-    한국어 키워드에 매우 강력하며, 본문 요약(snippet) 품질이 좋습니다.
-    """
     out = []
     try:
         with DDGS() as ddgs:
@@ -202,34 +195,31 @@ def fetch_duckduckgo_news(query: str, max_results: int = 50):
                 keywords=query,
                 region="kr-kr",
                 safesearch="off",
-                timelimit="y",  # 최근 1년치 검색 (이후 로직에서 분기별로 필터링됨)
+                timelimit="y",  # 최근 1년치
                 max_results=max_results
             )
             
             for r in ddg_gen:
-                # 날짜 파싱 시도 (DDG는 ISO 비슷한 포맷으로 줌)
                 pub_iso = None
                 raw_date = r.get('date')
                 if raw_date:
                     try:
-                        # 2024-05-20T14:00:00+00:00 형식이 일반적
                         dt = datetime.fromisoformat(raw_date.replace('Z', '+00:00'))
                         pub_iso = dt.isoformat()
                     except:
-                        pub_iso = None # 날짜 파싱 실패시 None 처리 (이후 로직에서 걸러짐)
+                        pub_iso = None 
 
                 out.append({
                     "source_system": "DuckDuckGo",
                     "title": r.get('title'),
                     "url": r.get('url'),
-                    "domain": r.get('source'), # DDG는 source 필드에 언론사명 제공
+                    "domain": r.get('source'),
                     "language": "ko",
                     "published": pub_iso,
                     "snippet": r.get('body', ''),
                     "source": r.get('source'),
                 })
     except Exception as e:
-        # st.error(f"DDG Error: {e}") # 사용자에게 에러 노출 최소화
         pass
         
     return out
@@ -282,7 +272,6 @@ def build_quarter_bullets(dfq: pd.DataFrame, cap: int = 150) -> str:
 
     lines = []
     for _, r in d.head(cap).iterrows():
-        # Source System을 앞에 표기하여 출처 구분
         src = r.get("domain") or r.get("source") or "Unknown"
         lines.append(f"- [{r['source_system']}/{r['sentiment']}] {r['title']} ({src})")
     return "\n".join(lines)
@@ -330,7 +319,6 @@ with st.sidebar:
         end_q = st.text_input("종료 분기", value="2025-Q1")
 
     st.subheader("검색어(Query)")
-    # 한국어 검색을 위해 키워드 보강
     default_query = (
         '"KIHS" OR "한국수자원조사기술원" OR "수자원공사" OR "환경부 물관리" OR '
         'flood OR drought OR "smart water" OR "digital twin"'
@@ -339,15 +327,12 @@ with st.sidebar:
 
     st.subheader("데이터 소스 설정")
     
-    # 1. DuckDuckGo (New, Korean Strong)
     use_ddg = st.checkbox("DuckDuckGo (한국어 추천)", value=True, help="한국어 뉴스 검색 정확도가 높습니다.")
     ddg_max = st.slider("DDG 수집량 (소스당)", 30, 200, 100, 10)
     
-    # 2. RSS (Supplement)
     use_rss = st.checkbox("Google News RSS (보강용)", value=True)
     rss_max = st.slider("RSS 수집량 (전체)", 20, 200, 80, 10)
 
-    # 3. GDELT (Global, BigData)
     use_gdelt = st.checkbox("GDELT (해외/빅데이터)", value=True, help="한글 검색은 약하지만, 영문/글로벌 추세 파악에 필수적입니다.")
     gdelt_max = st.slider("GDELT 수집량 (분기당)", 50, 1000, 250, 50)
     
@@ -370,7 +355,6 @@ if btn_clear_pool:
     st.success("모든 데이터를 초기화했습니다.")
 
 def run_collection():
-    # validate quarters
     try:
         quarters = list(quarter_iter(start_q, end_q))
         if not quarters:
@@ -381,7 +365,6 @@ def run_collection():
 
     all_rows = []
     
-    # 1. Collect GDELT (분기별 루프)
     if use_gdelt:
         with st.spinner("🌍 GDELT(글로벌) 데이터 수집 중..."):
             for qlab, qs, qe in quarters:
@@ -390,7 +373,6 @@ def run_collection():
                     r["quarter"] = qlab
                     all_rows.append(r)
 
-    # 2. Collect RSS (전체 기간 -> 날짜기반 할당)
     if use_rss:
         with st.spinner("📰 Google News RSS 데이터 수집 중..."):
             rss_recs = fetch_google_news_rss(query, limit=rss_max)
@@ -404,7 +386,6 @@ def run_collection():
                 except:
                     continue
 
-    # 3. Collect DuckDuckGo (전체 기간 -> 날짜기반 할당) [NEW]
     if use_ddg:
         with st.spinner("🦆 DuckDuckGo(한국어) 데이터 수집 중..."):
             ddg_recs = fetch_duckduckgo_news(query, max_results=ddg_max)
@@ -416,7 +397,6 @@ def run_collection():
                     r["quarter"] = quarter_label(dt)
                     all_rows.append(r)
                 except:
-                    # 날짜 형식이 안 맞으면 현재 분기 혹은 제외 처리
                     continue
 
     if not all_rows:
@@ -425,29 +405,22 @@ def run_collection():
 
     df = pd.DataFrame(all_rows)
 
-    # normalize cols
     needed = ["title", "url", "published", "source_system", "quarter", "domain", "language", "snippet", "source"]
     for c in needed:
         if c not in df.columns:
             df[c] = None
 
-    # dedup
     df["key"] = [make_key(u, t) for u, t in zip(df["url"].astype(str), df["title"].astype(str))]
     df = df.drop_duplicates(subset=["key"]).copy()
 
-    # strictly filter quarters within selected range
-    # (RSS와 DDG는 최근 데이터를 가져오므로, 사용자가 선택한 분기 범위를 벗어날 수 있음 -> 필터링)
     wanted_quarters = [q for q, _, _ in quarters]
     df = df[df["quarter"].isin(wanted_quarters)].copy()
 
-    # sentiment
     df["sentiment"] = df["title"].apply(rule_sentiment)
 
-    # sort
     df["published_dt"] = pd.to_datetime(df["published"], errors="coerce")
     df = df.sort_values(["quarter", "published_dt"], ascending=[True, False]).drop(columns=["published_dt"])
 
-    # summary table
     summary = (
         df.groupby(["quarter", "sentiment"])
         .size()
@@ -496,7 +469,6 @@ with left:
     with f4:
         kw = st.text_input("내용 검색", value="", placeholder="키워드 입력")
 
-    # Filter Logic
     dff = df[df["quarter"] == quarter_sel].copy()
     if source_sel != "전체":
         dff = dff[dff["source_system"] == source_sel]
@@ -530,13 +502,12 @@ with right:
     st.markdown("---")
     st.subheader("📝 AI 분석 리포트 (Report Pool)")
     
-    # pool overview
     if report_pool:
         pool_list = []
         for q, meta in report_pool.items():
             pool_list.append({
                 "분기": q,
-                "작성시각": meta.get("created_at", "").split("T")[1][:5], # 시간만 표시
+                "작성시각": meta.get("created_at", "").split("T")[1][:5], 
                 "기사수": meta.get("n_items", 0),
             })
         st.dataframe(pd.DataFrame(pool_list).sort_values("분기"), use_container_width=True, height=120, hide_index=True)
@@ -544,11 +515,13 @@ with right:
         st.info("생성된 보고서가 없습니다. 하단에서 생성하세요.")
 
     st.markdown("#### 보고서 생성 및 열람")
+    
+    # [FIX] quarters_list 정의 추가
+    quarters_list = sorted(df["quarter"].unique())
+    
     gen_targets = st.multiselect("분석 대상 분기 선택", quarters_list, default=[quarter_sel])
 
-    # Analyze action
     if btn_analyze:
-        # Use simple hash for demo
         fp = query_fingerprint(query, start_q, end_q, use_gdelt, use_rss, use_ddg, gdelt_max, rss_max, ddg_max)
         
         with st.spinner("Gemini가 데이터를 읽고 보고서를 작성 중입니다..."):
@@ -558,8 +531,7 @@ with right:
                 if dfq.empty:
                     continue
                     
-                # 프롬프트에 들어갈 뉴스 리스트 생성
-                bullets = build_quarter_bullets(dfq, cap=100) # 토큰 제한 고려
+                bullets = build_quarter_bullets(dfq, cap=100)
                 
                 try:
                     text = gemini_report(q, bullets, model_name=model_name)
@@ -577,7 +549,6 @@ with right:
             report_pool = new_pool
         st.success("보고서 작성이 완료되었습니다!")
 
-    # View report
     if report_pool:
         view_q = st.selectbox("열람할 보고서 분기", options=sorted(report_pool.keys()), key="view_q")
         with st.expander(f"{view_q} 보고서 보기", expanded=True):
