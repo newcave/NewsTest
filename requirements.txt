@@ -4,4 +4,5 @@ requests
 feedparser
 python-dateutil
 tqdm
+duckduckgo-search
 google-genai
