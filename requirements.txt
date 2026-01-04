@@ -1,8 +1,7 @@
 streamlit
+google-genai
 pandas
 requests
 feedparser
-python-dateutil
-tqdm
 duckduckgo-search
-google-genai
+python-dateutil
